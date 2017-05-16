@@ -1,0 +1,131 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Adrian Paleacu"
+date: "5/14/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(randomForest)
+```
+
+### Background ###
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Load Data ##
+Download the data from PML and the split into 20 cases that will be submitted:
+
+```{r}
+rm(list = ls())
+if (!file.exists("pml-training.csv")) {
+        download.file(
+                "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+                
+                destfile = "pml-training.csv"
+        )
+}
+if (!file.exists("pml-testing.csv")) {
+        download.file(
+                "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+                destfile = "pml-testing.csv"
+        )
+}
+submit <-
+        read.csv("pml-testing.csv",
+                 sep = ",",
+                 na.strings = c("", "NA"))
+data <-
+        read.csv("pml-training.csv",
+                 sep = ",",
+                 na.strings = c("", "NA"))
+
+# Remove all NAs.
+features <- names(submit[, colSums(is.na(submit)) == 0])[8:59]
+# Use only features that are used in submit cases.
+data <- data[, c(features, "classe")]
+submit <- submit[, c(features, "problem_id")]
+```
+
+
+## Bootstrap Initialization ##
+
+Training data will consist of 75% for training and 25% for testing.
+```{R}
+set.seed(1979)
+tTrain = createDataPartition(data$classe, p = 0.75, list = F)
+training = data[tTrain, ]
+testing = data[-tTrain, ]
+```
+
+
+## Feature Selection ##
+The PCA method will mix the final features into components that are difficult to interpret. For this, features with high than 90% correlation are removed.
+
+```{R}
+outcome = which(names(training) == "classe")
+highCorrelationCols = findCorrelation(abs(cor(training[, -outcome])), 0.90)
+highCorrelationFeatures = names(training)[highCorrelationCols]
+training = training[, -highCorrelationCols]
+outcome = which(names(training) == "classe")
+```
+
+The most correlated features are
+```{R}
+show(highCorrelationFeatures)
+```
+
+
+## Feature Importance ##
+For non liniar features the random forest method reduces overfitting. To see if the data is nonlinear we will use random forest to discover the most important features. The feature plot for the 4 most important features is shown.
+```{R}
+feaSelRF = randomForest(training[, -outcome], training[, outcome], importance = T)
+rfImp = data.frame(feaSelRF$importance)
+impFeatures = order(-rfImp$MeanDecreaseGini)
+inImp = createDataPartition(data$classe, p = 0.05, list = F)
+featurePlot(training[inImp, impFeatures[1:4]], training$classe[inImp], plot = "pairs")
+```
+
+
+## Training ##
+Use train data and the random forest and k-nearest neighbors for comparison.
+```{R}
+ctrlKNN = trainControl(method = "adaptive_cv")
+modelKNN = train(classe ~ ., training, method = "knn", trControl = ctrlKNN)
+ctrlRF = trainControl(method = "oob")
+modelRF = train(classe ~ ., training, method = "rf", ntree = 200, trControl = ctrlRF)
+resultsKNN = data.frame(modelKNN$results)
+resultsRF = data.frame(modelRF$results)
+```
+
+
+## Out of sample error testing ##
+The random forest will give a larger accuracy compared to K-nearest neighbors (KNN). 
+```{R}
+fitKNN = predict(modelKNN, testing)
+fitRF = predict(modelRF, testing)
+```
+
+```{R}
+confusionMatrix(fitKNN,testing$classe)
+```
+
+```{R}
+confusionMatrix(fitRF,testing$classe)
+```
+The random forest fit is more accurate than the K-Nearest Neighbors method with 99% accuracy.
+
+
+## Making seperate files for submission ##
+```{R}
+pml_write_to_files = function(x){
+  for(i in 1:length(x)){
+    fileName = paste0("Problem_id_", i,".txt")
+    write.table(x[i],file=fileName,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_to_files(fitRF)
+```
+

@@ -1,5 +1,3 @@
-# Practical-ML-CP
-# Practical-ML-CP
-# Practical-ML-CP
-# Practical-ML-CP
-# Practical-ML-CP
+# Practical Machine Learning Course Project #
+
+Peer-graded Assignment: Prediction Assignment Writeup
